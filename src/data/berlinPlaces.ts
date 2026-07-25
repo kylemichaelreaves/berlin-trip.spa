@@ -207,6 +207,18 @@ export const BERLIN_PLACES: readonly BerlinPlace[] = [
     lng: 13.3958,
   },
   {
+    // Coordinates from OSM node 1608998742 (tourism=artwork,
+    // artwork_type=statue, wikidata Q61769305), not a geocoder guess.
+    // Gustav Blaeser, cast at Lauchhammer, unveiled 3 June 1871 — a bust with
+    // herm section on a tiered Muschelkalk pedestal, not a full figure.
+    // Absent from LoD2: no cadastral record, so it has no building geometry.
+    id: 'hegel-denkmal',
+    name: 'Hegel-Denkmal (Hegelplatz)',
+    category: 'philosophy',
+    lat: 52.5193186,
+    lng: 13.3936026,
+  },
+  {
     id: 'staatsbibliothek-unter-den-linden',
     name: 'Staatsbibliothek zu Berlin — Handschriftenabteilung (Unter den Linden)',
     category: 'philosophy',
