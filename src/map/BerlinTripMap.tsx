@@ -49,6 +49,27 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
   // Lazy-load the ~1.5 MB basemap geometry (kept out of the bundle).
   const [geo] = createResource(loadBerlinGeo)
 
+  // Rebuilding the map means rebuilding the d3 scene AND re-extruding 2,384
+  // buildings into WebGL, so it must happen only on a real, settled resize.
+  //
+  // Two things make that harder than it looks. useElementSize hands back a new
+  // object on every ResizeObserver tick even when the integer size is
+  // unchanged, and Solid compares by identity — so identical sizes still
+  // invalidate. And picking a day genuinely reflows the map (the route panel
+  // appears), with the height oscillating across several frames before it
+  // settles; each intermediate value was triggering its own rebuild.
+  //
+  // So: dedupe by value, and wait for quiet. Measured 3-4 rebuilds per day
+  // click before this, one after.
+  const [size, setSize] = createSignal({ w: 0, h: 0 }, { equals: (a, b) => a.w === b.w && a.h === b.h })
+  let sizeTimer: ReturnType<typeof setTimeout> | undefined
+  createEffect(() => {
+    const { w, h } = dims()
+    clearTimeout(sizeTimer)
+    sizeTimer = setTimeout(() => setSize({ w, h }), 120)
+  })
+  onCleanup(() => clearTimeout(sizeTimer))
+
   // ── 3D massing (opt-in) ───────────────────────────────────
   const [show3D, setShow3D] = createSignal(false)
   const [azimuth, setAzimuth] = createSignal(0)
@@ -58,8 +79,7 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
 
   createEffect(() => {
     const el = svgEl
-    const w = dims().w
-    const h = dims().h
+    const { w, h } = size()
     const data = geo()
     if (!el || !data || w <= 0 || h <= 0) return
 
@@ -96,6 +116,10 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
       handle?.setRoute(props.route())
       handle?.setCluster(props.cluster())
       handle?.setSelected(props.selectedId())
+      // A genuine resize still rebuilds the map, and a fresh one starts flat.
+      // Without this the SVG would drop its ground affine while the WebGL
+      // massing kept the tilt, and the buildings would slide off the map.
+      handle?.setView3D(azimuth(), tiltDeg())
       props.registerHandle(handle!)
     })
   })
@@ -138,8 +162,7 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
   createEffect(() => {
     const canvas = canvasEl
     const data = buildings()
-    const w = dims().w
-    const h = dims().h
+    const { w, h } = size()
     const h3 = handle
     if (!canvas || !data || !h3 || w <= 0 || h <= 0) return
 
@@ -185,8 +208,7 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
   })
 
   createEffect(() => {
-    const w = dims().w
-    const h = dims().h
+    const { w, h } = size()
     if (w > 0 && h > 0) massing?.setSize(w, h)
   })
 
