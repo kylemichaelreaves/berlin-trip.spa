@@ -1,0 +1,39 @@
+/* Paper-wireframe theme for the standalone Berlin trip planner.
+   Tokens mirror the Claude Design handoff (Berlin Trip Map Wireframes). */
+.berlin-paper {
+  --wf-ink: #26241f;
+  --wf-paper: #f7f4ee;
+  --wf-paper-2: #fffdf8;
+  --wf-muted: #a39d90;
+  --wf-line: #e4dfd4;
+  --wf-glass: rgba(255, 253, 248, 0.95);
+  --wf-water: #b9c7cf;
+  --wf-accent: #c4623e;
+
+  color: var(--wf-ink);
+  background: var(--wf-paper);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+}
+
+.berlin-paper[data-theme='dark'] {
+  --wf-ink: #e9e4da;
+  --wf-paper: #16140f;
+  --wf-paper-2: #211e17;
+  --wf-muted: #6f6a5d;
+  --wf-line: #322e26;
+  --wf-glass: rgba(33, 30, 23, 0.95);
+  --wf-water: #3b4a55;
+}
+
+/* Annotation callouts: regular sans-serif (no script font). */
+.berlin-paper .wf-hand {
+  font-family: inherit;
+}
+.berlin-paper .wf-mono {
+  font-family: ui-monospace, monospace;
+}

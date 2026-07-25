@@ -1,0 +1,83 @@
+# berlin-trip.spa
+
+An interactive paper-wireframe map of a week in Berlin (Sun 12 – Sat 18 Jul 2026):
+places, categories, a day-by-day itinerary, and precomputed walking/transit routes
+between stops.
+
+Extracted from `budget-visualizer-app`, where it lived at `/berlin` as a
+full-bleed standalone page.
+
+## Stack
+
+Solid + Vite + Tailwind v4, with d3 for the map projection and rendering. No
+backend — the basemap is static GeoJSON and every route is precomputed and
+committed.
+
+## Run
+
+```bash
+bun install
+bun run dev        # http://localhost:5173
+```
+
+```bash
+bun run build      # tsc -b && vite build  -> dist/
+bun run preview
+bun run test       # vitest
+bun run lint
+bun run format
+```
+
+## Layout
+
+```
+src/
+  BerlinTripPage.tsx    page component — composition + state only
+  berlin-paper.css      the --wf-* design tokens (light/dark)
+  ui/                   presentational components, one per file
+  map/                  d3 map: createBerlinMap, BerlinTripMap, PinPopover
+  data/                 places, itinerary, routes, shapes, geo loader
+  utils/                pure helpers, one concern per file
+  composables/          useElementSize
+public/berlin/          basemap GeoJSON (~1.6 MB, lazy-loaded, not bundled)
+scripts/                route generator
+tests/unit/             daySegments + polyline codec
+```
+
+Conventions carried over from the source repo: one component per file, named
+after the component; pure helpers get their own `utils/` file; the page
+component is composition and state only.
+
+## Basemap geometry
+
+The five GeoJSON files in `public/berlin/` (districts, water, roads, transit,
+wall) total ~1.6 MB and are **not** bundled — `data/berlinGeo.ts` fetches them
+once, lazily, when the map mounts.
+
+Set `VITE_BERLIN_GEO_BASE` to serve them from a bucket or CDN instead:
+
+```bash
+VITE_BERLIN_GEO_BASE=https://cdn.example.com/berlin bun run build
+```
+
+## Regenerating routes
+
+`src/data/berlinRoutes.ts` is generated, not hand-edited. Walking legs come from
+the FOSSGIS OSRM instance (foot profile), transit legs from the Transitous
+(MOTIS) API — both free and keyless. The script runs on demand and its output is
+committed, so the app itself never calls those services.
+
+```bash
+bun run routes     # regenerate + format
+```
+
+Transit legs are planned against the real trip dates, so re-running long after
+the trip will return different (or empty) schedules. The committed output is the
+source of truth.
+
+## Notes
+
+- `src/data/berlinPlaces.ts` and `berlinItinerary.ts` contain personal itinerary
+  details, including a hotel location. Worth knowing before deploying publicly.
+- The `dark` theme is the default; the toggle in the top bar switches to the
+  paper-light palette.

@@ -1,0 +1,7 @@
+dist
+node_modules
+bun.lock
+coverage
+
+# Generated Berlin map geo data (kept minified; served as static assets, lazy-loaded)
+public/berlin/*.json
