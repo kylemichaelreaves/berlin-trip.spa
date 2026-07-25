@@ -10,7 +10,7 @@ import {
 } from 'solid-js'
 import { useElementSize } from '../composables/useElementSize'
 import { byId, type BerlinCategoryKey } from '../data/berlinPlaces'
-import { loadBerlinGeo, loadBerlinBuildings } from '../data/berlinGeo'
+import { loadBerlinGeo, BERLIN_BUILDINGS_URL } from '../data/berlinGeo'
 import type { Buildings3DHandle } from './buildings3d'
 import { PinPopover } from './PinPopover'
 import { MassingControl } from '../ui/MassingControl'
@@ -45,6 +45,10 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
   const [pop, setPop] = createSignal<Pop>(null)
   let handle: BerlinMapHandle | null = null
   let massing: Buildings3DHandle | null = null
+  // The massing now loads asynchronously (module + 620 kB GLB), so the map may
+  // already be zoomed by the time it appears. Remember the latest transform so
+  // a freshly-built layer can catch up instead of rendering at identity.
+  let currentTransform: [number, number, number] = [1, 0, 0]
 
   // Lazy-load the ~1.5 MB basemap geometry (kept out of the bundle).
   const [geo] = createResource(loadBerlinGeo)
@@ -74,8 +78,7 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
   const [show3D, setShow3D] = createSignal(false)
   const [azimuth, setAzimuth] = createSignal(0)
   const [tiltDeg, setTiltDeg] = createSignal(0)
-  // Only fetched once 3D is switched on — it's another ~1.2 MB.
-  const [buildings] = createResource(show3D, loadBerlinBuildings)
+  const [massingLoading, setMassingLoading] = createSignal(false)
 
   createEffect(() => {
     const el = svgEl
@@ -103,7 +106,10 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
           setPop({ id: place.id, x, y })
           props.onSelect(place.id)
         },
-        onTransform: (k, x, y) => massing?.setTransform(k, x, y),
+        onTransform: (k, x, y) => {
+          currentTransform = [k, x, y]
+          massing?.setTransform(k, x, y)
+        },
       },
       overlayEl,
     )
@@ -157,37 +163,55 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
     handle?.setSelected(v)
   })
 
-  // Build the WebGL massing once the footprints land. It shares the map's
+  // Build the WebGL massing once 3D is switched on. It shares the map's
   // projection, so the two agree on where every building sits.
   createEffect(() => {
     const canvas = canvasEl
-    const data = buildings()
+    const on = show3D()
     const { w, h } = size()
     const h3 = handle
-    if (!canvas || !data || !h3 || w <= 0 || h <= 0) return
+    if (!canvas || !on || !h3 || w <= 0 || h <= 0) return
 
     let cancelled = false
     onCleanup(() => {
       cancelled = true
     })
 
-    // three.js is ~130 kB gzipped and the massing is opt-in, so the module is
-    // only pulled once someone actually turns it on.
-    void import('./buildings3d').then(({ createBuildings3D }) => {
-      if (cancelled) return
-      massing?.destroy()
-      const css = getComputedStyle(canvas)
-      const token = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback
-      massing = createBuildings3D(canvas, data, (lng, lat) => h3.projectPoint(lng, lat), w, h, {
-        roof: token('--wf-line', '#e4dfd4'),
-        wall: token('--wf-muted', '#a39d90'),
-        monument: token('--wf-accent', '#c4623e'),
+    // Both the three.js module (~130 kB gz) and the 620 kB GLB are opt-in, so
+    // neither is fetched until someone actually turns the layer on.
+    setMassingLoading(true)
+    void import('./buildings3d')
+      .then(({ createBuildings3D }) => {
+        const css = getComputedStyle(canvas)
+        const token = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback
+        return createBuildings3D(
+          canvas,
+          BERLIN_BUILDINGS_URL,
+          (lng, lat) => h3.projectPoint(lng, lat),
+          w,
+          h,
+          {
+            roof: token('--wf-line', '#e4dfd4'),
+            wall: token('--wf-muted', '#a39d90'),
+            monument: token('--wf-accent', '#c4623e'),
+          },
+        )
       })
-      untrack(() => {
-        massing?.setView(azimuth(), tiltDeg())
-        massing?.setVisible(show3D())
+      .then((built) => {
+        if (cancelled) {
+          built.destroy()
+          return
+        }
+        massing?.destroy()
+        massing = built
+        untrack(() => {
+          massing?.setView(azimuth(), tiltDeg())
+          massing?.setVisible(show3D())
+          massing?.setTransform(...currentTransform)
+        })
       })
-    })
+      .catch((err) => console.error('[massing] failed to load', err))
+      .finally(() => setMassingLoading(false))
   })
 
   createEffect(() => {
@@ -288,7 +312,7 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
       <div class="absolute left-3.5 top-3.5">
         <MassingControl
           on={show3D()}
-          loading={buildings.loading}
+          loading={massingLoading()}
           azimuth={azimuth()}
           tilt={tiltDeg()}
           onToggle={() => setShow3D((v) => !v)}
