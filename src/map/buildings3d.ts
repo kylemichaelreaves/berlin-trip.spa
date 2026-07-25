@@ -35,7 +35,22 @@ export type BuildingProps = {
   base_m: number
   footprint_m2: number
   roof: string
+  /**
+   * Present only on features sourced from OSM Simple 3D Buildings — the hero
+   * landmarks where LoD2 gives a flat box (Berliner Dom, Reichstag) or nothing
+   * at all (Brandenburger Tor). LoD2 carries its shape in the geometry; OSM
+   * describes a solid parametrically, so the client has to rebuild it.
+   */
+  src?: 'osm'
+  /** Metres above ground the part starts — stacked parts float on lower ones. */
+  min_h_m?: number
+  /** How much of `height` is roof rather than wall. */
+  roof_h_m?: number
+  roof_shape?: string
 }
+
+/** Roof shapes we loft into a solid. Anything else is capped flat. */
+const ROOF_SOLIDS = new Set(['dome', 'onion', 'pyramidal', 'hipped', 'cone', 'conical'])
 
 export type Buildings3DPalette = {
   roof: string
@@ -121,14 +136,37 @@ export function createBuildings3D(
   let maxY = -Infinity
 
   type Ring = [number, number][]
-  const buildings: { rings: Ring[][]; h: number; monument: boolean }[] = []
+  type Massing = {
+    rings: Ring[][]
+    /** Where the walls start. Non-zero only for stacked OSM parts. */
+    base: number
+    /** Where the walls stop and the roof begins. */
+    eaves: number
+    /** Top of the roof. Equals `eaves` when the roof is flat. */
+    top: number
+    roof: string
+    monument: boolean
+  }
+  const buildings: Massing[] = []
 
   for (const f of fc.features) {
     const props = f.properties
     const polys: number[][][][] =
       f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates : [f.geometry.coordinates]
-    const monument = (props?.footprint_m2 ?? 0) < MONUMENT_MAX_M2
-    const h = Math.max(0.5, props?.height ?? 3) * pxPerMetre * HEIGHT_SCALE
+    // The small-footprint rule exists to pick out the Holocaust Memorial's
+    // stelae. It must not catch OSM hero parts — a cathedral's colonnade
+    // columns are also tiny in plan, and they are not monuments.
+    const monument = props?.src !== 'osm' && (props?.footprint_m2 ?? 0) < MONUMENT_MAX_M2
+    const unit = pxPerMetre * HEIGHT_SCALE
+
+    // LoD2 features are a footprint and one height — a plain prism. OSM hero
+    // features carry min_height and roof_height too, so they rebuild as a
+    // stack: wall from base to eaves, then a lofted cap.
+    const shape = (props?.roof_shape ?? 'flat').toLowerCase()
+    const roofM = ROOF_SOLIDS.has(shape) ? (props?.roof_h_m ?? 0) : 0
+    const base = (props?.min_h_m ?? 0) * unit
+    const top = Math.max(0.5, props?.height ?? 3) * unit
+    const eaves = Math.max(base, top - roofM * unit)
 
     const projected: Ring[][] = []
     for (const poly of polys) {
@@ -148,7 +186,7 @@ export function createBuildings3D(
       }
       if (rings.length) projected.push(rings)
     }
-    if (projected.length) buildings.push({ rings: projected, h, monument })
+    if (projected.length) buildings.push({ rings: projected, base, eaves, top, roof: shape, monument })
   }
 
   const cx = (minX + maxX) / 2
@@ -166,40 +204,89 @@ export function createBuildings3D(
       if (!outer) continue
 
       // Walls: one quad per edge, shaded by facing so planes read apart —
-      // the same trick lod2.py uses for its SVG output.
-      for (const ring of rings) {
-        for (let i = 0; i < ring.length - 1; i++) {
-          const [x1, y1] = ring[i]
-          const [x2, y2] = ring[i + 1]
-          const dx = x2 - x1
-          const dy = y2 - y1
-          const len = Math.hypot(dx, dy) || 1
-          // Facing in ground space; the light sits north-west.
-          const lambert = Math.max(0, (-dy / len) * 0.55 + (-dx / len) * 0.45)
-          tmpC.copy(baseC).multiplyScalar(0.62 + 0.38 * lambert)
-          push(x1, y1, 0, tmpC)
-          push(x2, y2, 0, tmpC)
-          push(x2, y2, bldg.h, tmpC)
-          push(x1, y1, 0, tmpC)
-          push(x2, y2, bldg.h, tmpC)
-          push(x1, y1, bldg.h, tmpC)
+      // the same trick lod2.py uses for its SVG output. They start at `base`,
+      // which is non-zero for a stacked OSM part sitting on the one below.
+      if (bldg.eaves > bldg.base + 1e-6) {
+        for (const ring of rings) {
+          for (let i = 0; i < ring.length - 1; i++) {
+            const [x1, y1] = ring[i]
+            const [x2, y2] = ring[i + 1]
+            const dx = x2 - x1
+            const dy = y2 - y1
+            const len = Math.hypot(dx, dy) || 1
+            // Facing in ground space; the light sits north-west.
+            const lambert = Math.max(0, (-dy / len) * 0.55 + (-dx / len) * 0.45)
+            tmpC.copy(baseC).multiplyScalar(0.62 + 0.38 * lambert)
+            push(x1, y1, bldg.base, tmpC)
+            push(x2, y2, bldg.base, tmpC)
+            push(x2, y2, bldg.eaves, tmpC)
+            push(x1, y1, bldg.base, tmpC)
+            push(x2, y2, bldg.eaves, tmpC)
+            push(x1, y1, bldg.eaves, tmpC)
+          }
         }
       }
 
-      // Roof cap, triangulated with holes.
-      const contour = outer.slice(0, -1).map(([x, y]) => new THREE.Vector2(x, y))
-      const holes = rings.slice(1).map((r) => r.slice(0, -1).map(([x, y]) => new THREE.Vector2(x, y)))
-      let tris: number[][]
-      try {
-        tris = THREE.ShapeUtils.triangulateShape(contour, holes)
-      } catch {
-        tris = [] // degenerate ring — skip the cap, keep the walls
-      }
-      const all = [...contour, ...holes.flat()]
-      for (const t of tris) {
-        for (const idx of t) {
-          const v = all[idx]
-          if (v) push(v.x, v.y, bldg.h, roofC)
+      if (bldg.top > bldg.eaves + 1e-6) {
+        // Lofted roof: scale the ring toward its centroid as it rises. A
+        // quarter-circle profile for a dome, a straight taper for a pyramid.
+        // Works on any footprint, which matters because OSM maps the Dom's
+        // cupolas as many-sided polygons rather than true circles.
+        const pts = outer.slice(0, -1)
+        const ccx = pts.reduce((a, p) => a + p[0], 0) / pts.length
+        const ccy = pts.reduce((a, p) => a + p[1], 0) / pts.length
+        const curved = bldg.roof === 'dome' || bldg.roof === 'onion' || bldg.roof.startsWith('con')
+        const steps = curved ? 6 : 1
+        const level = (i: number): [number, number] => {
+          const t = i / steps
+          if (curved) {
+            const a = (t * Math.PI) / 2
+            return [Math.cos(a), bldg.eaves + (bldg.top - bldg.eaves) * Math.sin(a)]
+          }
+          return [1 - t, bldg.eaves + (bldg.top - bldg.eaves) * t]
+        }
+        for (let i = 0; i < steps; i++) {
+          const [s0, za] = level(i)
+          const [s1, zb] = level(i + 1)
+          // Higher rings catch more light, so the curvature reads.
+          tmpC.copy(roofC).multiplyScalar(0.78 + 0.28 * (i / steps))
+          for (let j = 0; j < pts.length; j++) {
+            const [x0, y0] = pts[j]
+            const [x1, y1] = pts[(j + 1) % pts.length]
+            const ax = ccx + (x0 - ccx) * s0
+            const ay = ccy + (y0 - ccy) * s0
+            const bx = ccx + (x1 - ccx) * s0
+            const by = ccy + (y1 - ccy) * s0
+            const cxp = ccx + (x1 - ccx) * s1
+            const cyp = ccy + (y1 - ccy) * s1
+            const dxp = ccx + (x0 - ccx) * s1
+            const dyp = ccy + (y0 - ccy) * s1
+            push(ax, ay, za, tmpC)
+            push(bx, by, za, tmpC)
+            push(cxp, cyp, zb, tmpC)
+            if (s1 > 1e-9) {
+              push(ax, ay, za, tmpC)
+              push(cxp, cyp, zb, tmpC)
+              push(dxp, dyp, zb, tmpC)
+            }
+          }
+        }
+      } else {
+        // Flat cap, triangulated with holes.
+        const contour = outer.slice(0, -1).map(([x, y]) => new THREE.Vector2(x, y))
+        const holes = rings.slice(1).map((r) => r.slice(0, -1).map(([x, y]) => new THREE.Vector2(x, y)))
+        let tris: number[][]
+        try {
+          tris = THREE.ShapeUtils.triangulateShape(contour, holes)
+        } catch {
+          tris = [] // degenerate ring — skip the cap, keep the walls
+        }
+        const all = [...contour, ...holes.flat()]
+        for (const t of tris) {
+          for (const idx of t) {
+            const v = all[idx]
+            if (v) push(v.x, v.y, bldg.top, roofC)
+          }
         }
       }
     }
