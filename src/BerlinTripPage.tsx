@@ -11,6 +11,7 @@ import { DayStepper } from './ui/DayStepper'
 import { MapLegend } from './ui/MapLegend'
 import { FitControl } from './ui/FitControl'
 import { ScaleBar } from './ui/ScaleBar'
+import { Attribution } from './ui/Attribution'
 import BerlinTripMap from './map/BerlinTripMap'
 import type { BerlinFitPreset, BerlinMapHandle, BerlinMapLayers } from './map/createBerlinMap'
 
@@ -222,12 +223,16 @@ export default function BerlinTripPage(): JSX.Element {
                   onToggleCluster={() => setCluster((v) => !v)}
                 />
               </div>
-              <div class="pointer-events-none absolute bottom-4 right-4">
+              <div class="pointer-events-none absolute bottom-4 right-4 flex flex-col items-end gap-1.5">
                 <ScaleBar
                   label={
                     fitPreset() === 'everything' ? '~10 km' : fitPreset() === 'region' ? '~5 km' : '~1 km'
                   }
                 />
+                {/* Links need clicks; the wrapper is pointer-events-none. */}
+                <div class="pointer-events-auto">
+                  <Attribution />
+                </div>
               </div>
             </div>
           </div>
