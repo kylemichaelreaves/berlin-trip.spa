@@ -219,6 +219,18 @@ export const BERLIN_PLACES: readonly BerlinPlace[] = [
     lng: 13.3936026,
   },
   {
+    // The only indoor exhibit on the map. Coordinates are OSM way 576083618 —
+    // `indoor=room, level=2, name="room 210 : Nefertiti"` — the Nordkuppelsaal
+    // of the Neues Museum, where the bust actually stands, rather than the
+    // museum's own centroid. That puts it ~53 m north of the `neues-museum`
+    // pin, so the two separate at high zoom and cluster at low.
+    id: 'nofretete',
+    name: 'Nofretete (Neues Museum, Nordkuppelsaal)',
+    category: 'philosophy',
+    lat: 52.5205669,
+    lng: 13.3974612,
+  },
+  {
     id: 'staatsbibliothek-unter-den-linden',
     name: 'Staatsbibliothek zu Berlin — Handschriftenabteilung (Unter den Linden)',
     category: 'philosophy',
