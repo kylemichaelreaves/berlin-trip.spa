@@ -10,8 +10,10 @@ import {
 } from 'solid-js'
 import { useElementSize } from '../composables/useElementSize'
 import { byId, type BerlinCategoryKey } from '../data/berlinPlaces'
-import { loadBerlinGeo } from '../data/berlinGeo'
+import { loadBerlinGeo, loadBerlinBuildings } from '../data/berlinGeo'
+import type { Buildings3DHandle } from './buildings3d'
 import { PinPopover } from './PinPopover'
+import { MassingControl } from '../ui/MassingControl'
 import {
   createBerlinMap,
   type BerlinMapHandle,
@@ -36,13 +38,23 @@ export type BerlinTripMapProps = {
 
 export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
   let svgEl: SVGSVGElement | undefined
+  let overlayEl: SVGSVGElement | undefined
+  let canvasEl: HTMLCanvasElement | undefined
   const [dims, attachWrapper] = useElementSize()
   const [tip, setTip] = createSignal<Tip>(null)
   const [pop, setPop] = createSignal<Pop>(null)
   let handle: BerlinMapHandle | null = null
+  let massing: Buildings3DHandle | null = null
 
   // Lazy-load the ~1.5 MB basemap geometry (kept out of the bundle).
   const [geo] = createResource(loadBerlinGeo)
+
+  // ── 3D massing (opt-in) ───────────────────────────────────
+  const [show3D, setShow3D] = createSignal(false)
+  const [azimuth, setAzimuth] = createSignal(0)
+  const [tiltDeg, setTiltDeg] = createSignal(0)
+  // Only fetched once 3D is switched on — it's another ~1.2 MB.
+  const [buildings] = createResource(show3D, loadBerlinBuildings)
 
   createEffect(() => {
     const el = svgEl
@@ -52,21 +64,29 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
     if (!el || !data || w <= 0 || h <= 0) return
 
     handle?.destroy()
-    handle = createBerlinMap(el, data, w, h, {
-      onLineEnter: (label, e) => {
-        setPop(null)
-        setTip({ x: e.offsetX, y: e.offsetY, label })
+    handle = createBerlinMap(
+      el,
+      data,
+      w,
+      h,
+      {
+        onLineEnter: (label, e) => {
+          setPop(null)
+          setTip({ x: e.offsetX, y: e.offsetY, label })
+        },
+        onLineMove: (label, e) => setTip({ x: e.offsetX, y: e.offsetY, label }),
+        onLineLeave: () => setTip(null),
+        onPinEnter: (place, e) => setTip({ x: e.offsetX, y: e.offsetY, label: place.name }),
+        onPinLeave: () => setTip(null),
+        onPinClick: (place, x, y) => {
+          setTip(null)
+          setPop({ id: place.id, x, y })
+          props.onSelect(place.id)
+        },
+        onTransform: (k, x, y) => massing?.setTransform(k, x, y),
       },
-      onLineMove: (label, e) => setTip({ x: e.offsetX, y: e.offsetY, label }),
-      onLineLeave: () => setTip(null),
-      onPinEnter: (place, e) => setTip({ x: e.offsetX, y: e.offsetY, label: place.name }),
-      onPinLeave: () => setTip(null),
-      onPinClick: (place, x, y) => {
-        setTip(null)
-        setPop({ id: place.id, x, y })
-        props.onSelect(place.id)
-      },
-    })
+      overlayEl,
+    )
 
     untrack(() => {
       handle?.setVisibleCategories(props.visibleCategories())
@@ -113,7 +133,66 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
     handle?.setSelected(v)
   })
 
+  // Build the WebGL massing once the footprints land. It shares the map's
+  // projection, so the two agree on where every building sits.
+  createEffect(() => {
+    const canvas = canvasEl
+    const data = buildings()
+    const w = dims().w
+    const h = dims().h
+    const h3 = handle
+    if (!canvas || !data || !h3 || w <= 0 || h <= 0) return
+
+    let cancelled = false
+    onCleanup(() => {
+      cancelled = true
+    })
+
+    // three.js is ~130 kB gzipped and the massing is opt-in, so the module is
+    // only pulled once someone actually turns it on.
+    void import('./buildings3d').then(({ createBuildings3D }) => {
+      if (cancelled) return
+      massing?.destroy()
+      const css = getComputedStyle(canvas)
+      const token = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback
+      massing = createBuildings3D(canvas, data, (lng, lat) => h3.projectPoint(lng, lat), w, h, {
+        roof: token('--wf-line', '#e4dfd4'),
+        wall: token('--wf-muted', '#a39d90'),
+        monument: token('--wf-accent', '#c4623e'),
+      })
+      untrack(() => {
+        massing?.setView(azimuth(), tiltDeg())
+        massing?.setVisible(show3D())
+      })
+    })
+  })
+
+  createEffect(() => {
+    const a = azimuth()
+    const t = tiltDeg()
+    massing?.setView(a, t)
+    handle?.setView3D(a, t)
+  })
+
+  createEffect(() => {
+    const on = show3D()
+    massing?.setVisible(on)
+    // Flatten the map back out when 3D is switched off.
+    if (!on) {
+      setAzimuth(0)
+      setTiltDeg(0)
+    }
+  })
+
+  createEffect(() => {
+    const w = dims().w
+    const h = dims().h
+    if (w > 0 && h > 0) massing?.setSize(w, h)
+  })
+
   onCleanup(() => {
+    massing?.destroy()
+    massing = null
     handle?.destroy()
     handle = null
   })
@@ -124,14 +203,35 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
   })
 
   return (
-    <div ref={(el) => attachWrapper(el)} class="relative h-full w-full" data-testid="berlin-trip-map">
+    <div
+      ref={(el) => attachWrapper(el)}
+      class="relative h-full w-full"
+      style={{ background: 'var(--wf-paper)' }}
+      data-testid="berlin-trip-map"
+    >
+      {/* Stack: basemap svg -> WebGL massing -> pin overlay svg. The canvas and
+          the overlay are pointer-events:none so wheel and drag still land on
+          the basemap svg, which owns the d3 zoom behaviour. */}
       <svg
         ref={(el) => {
           svgEl = el
         }}
-        class="block h-full w-full"
-        style={{ background: 'var(--wf-paper)' }}
+        class="absolute inset-0 block h-full w-full"
         data-testid="berlin-trip-map-svg"
+      />
+      <canvas
+        ref={(el) => {
+          canvasEl = el
+        }}
+        class="pointer-events-none absolute inset-0 h-full w-full"
+        data-testid="berlin-trip-map-buildings"
+      />
+      <svg
+        ref={(el) => {
+          overlayEl = el
+        }}
+        class="pointer-events-none absolute inset-0 block h-full w-full"
+        data-testid="berlin-trip-map-overlay"
       />
 
       <Show when={geo.loading}>
@@ -162,6 +262,18 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
           </div>
         </div>
       </Show>
+
+      <div class="absolute left-3.5 top-3.5">
+        <MassingControl
+          on={show3D()}
+          loading={buildings.loading}
+          azimuth={azimuth()}
+          tilt={tiltDeg()}
+          onToggle={() => setShow3D((v) => !v)}
+          onAzimuth={setAzimuth}
+          onTilt={setTiltDeg}
+        />
+      </div>
 
       <Show when={tip()}>
         {(t) => (

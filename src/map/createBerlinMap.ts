@@ -29,6 +29,8 @@ export type BerlinMapCallbacks = {
   onPinEnter: (place: BerlinPlace, event: PointerEvent) => void
   onPinLeave: () => void
   onPinClick: (place: BerlinPlace, screenX: number, screenY: number) => void
+  /** Every zoom tick, so an overlay (the WebGL massing) can mirror the view. */
+  onTransform?: (k: number, x: number, y: number) => void
 }
 
 export type BerlinMapLayers = {
@@ -60,6 +62,10 @@ export type BerlinMapHandle = {
   /** Route for the active itinerary leg — walk legs dotted, transit solid. */
   setRoute: (legs: readonly BerlinMapRouteLeg[] | null) => void
   setCluster: (on: boolean) => void
+  /** Azimuth + tilt in degrees. Tilt 0 is the plain top-down map. */
+  setView3D: (azimuthDeg: number, tiltDeg: number) => void
+  /** lng/lat -> projection pixels, so an overlay can share this projection. */
+  projectPoint: (lng: number, lat: number) => [number, number] | null
   zoomBy: (factor: number) => void
   fit: (preset: BerlinFitPreset) => void
   fitPlaces: (ids: readonly string[]) => void
@@ -86,6 +92,13 @@ export function createBerlinMap(
   width: number,
   height: number,
   callbacks: BerlinMapCallbacks,
+  /**
+   * Optional separate <svg> for the pin overlay. Supply one when a WebGL
+   * canvas sits between the basemap and the pins, so the stack reads
+   * basemap -> buildings -> pins. Without it the overlay lives in the
+   * basemap svg, as before.
+   */
+  overlayEl?: SVGSVGElement,
 ): BerlinMapHandle {
   const { districts, water, roads, transit, wall } = geo
   const svg = d3.select(svgEl)
@@ -347,7 +360,12 @@ export function createBerlinMap(
     .on('pointerleave', () => callbacks.onLineLeave())
 
   // ── Marker overlay (screen-space, repainted on zoom) ──────
-  const overlay = svg.append('g').attr('data-role', 'markers')
+  const overlayRoot = overlayEl ? d3.select(overlayEl) : svg
+  if (overlayEl) {
+    overlayRoot.selectAll('*').remove()
+    overlayRoot.attr('viewBox', `0 0 ${width} ${height}`).attr('width', width).attr('height', height)
+  }
+  const overlay = overlayRoot.append('g').attr('data-role', 'markers')
 
   // base (unzoomed) projected positions
   const base = new Map<string, [number, number]>()
@@ -360,9 +378,55 @@ export function createBerlinMap(
   let dayIds: readonly string[] = []
   let clusterOn = true
 
+  // ── Ground affine (shared with the WebGL building layer) ────
+  // Under an orthographic camera the ground plane maps to the screen by a
+  // plain 2D affine: spin by the azimuth, squash vertically by cos(tilt).
+  // Applying the identical affine here and in buildings3d.ts is what keeps
+  // the SVG and the WebGL massing registered. See buildings3d.ts for the
+  // derivation.
+  //
+  // It is applied in SCREEN space, i.e. AFTER the d3 zoom transform, pivoting
+  // on the viewport centre. Doing it the other way round (inside the zoom, in
+  // projection space) also stays registered, but the pivot is then a fixed
+  // geographic point, so tilting while zoomed in flings the view off-screen.
+  // In screen space, whatever you are looking at stays under the cursor.
+  let azimuth = 0
+  let tiltDeg = 0
+
+  /** Screen px -> screen px. Identity while flat. */
+  function ground(sx: number, sy: number): [number, number] {
+    if (azimuth === 0 && tiltDeg === 0) return [sx, sy]
+    const phi = (azimuth * Math.PI) / 180
+    const ct = Math.cos((tiltDeg * Math.PI) / 180)
+    const cp = Math.cos(phi)
+    const sp = Math.sin(phi)
+    const dx = sx - width / 2
+    const dy = sy - height / 2
+    return [dx * cp - dy * sp + width / 2, (dx * sp + dy * cp) * ct + height / 2]
+  }
+
+  /** The same affine as an SVG transform, to PREFIX the zoom transform. */
+  function groundSvgTransform(): string {
+    if (azimuth === 0 && tiltDeg === 0) return ''
+    const phi = (azimuth * Math.PI) / 180
+    const ct = Math.cos((tiltDeg * Math.PI) / 180)
+    const cp = Math.cos(phi)
+    const sp = Math.sin(phi)
+    // matrix(a,b,c,d,e,f): (x,y) -> (a·x + c·y + e, b·x + d·y + f)
+    return (
+      `translate(${width / 2},${height / 2}) matrix(${cp},${sp * ct},${-sp},${cp * ct},0,0)` +
+      ` translate(${-width / 2},${-height / 2}) `
+    )
+  }
+
+  function applyRootTransform(): void {
+    // Prefix, so the shear happens in screen space after the zoom.
+    root.attr('transform', groundSvgTransform() + transform.toString())
+  }
+
   const screen = (id: string): [number, number] => {
     const m = base.get(id) ?? [-9999, -9999]
-    return [transform.applyX(m[0]), transform.applyY(m[1])]
+    return ground(transform.applyX(m[0]), transform.applyY(m[1]))
   }
 
   function appendPin(
@@ -377,6 +441,9 @@ export function createBerlinMap(
       .append('g')
       .attr('transform', `translate(${x},${y})`)
       .style('cursor', 'pointer')
+      // The overlay <svg> is pointer-events:none so wheel/drag reach the
+      // basemap <svg> underneath; pins opt back in.
+      .style('pointer-events', 'auto')
       .attr('opacity', opts.faded ? 0.28 : 1)
       .attr('data-place-id', place.id)
     // active / selected ring around the glyph centre
@@ -455,6 +522,7 @@ export function createBerlinMap(
       .append('g')
       .attr('transform', `translate(${x},${y})`)
       .style('cursor', 'pointer')
+      .style('pointer-events', 'auto')
       .attr('opacity', faded ? 0.45 : 1)
     node
       .append('circle')
@@ -540,8 +608,9 @@ export function createBerlinMap(
     .scaleExtent([0.6, 48])
     .on('zoom', (event) => {
       transform = event.transform
-      root.attr('transform', transform.toString())
+      applyRootTransform()
       applyLabelScale(transform.k)
+      callbacks.onTransform?.(transform.k, transform.x, transform.y)
       paint()
     })
   svg.call(zoom)
@@ -637,6 +706,13 @@ export function createBerlinMap(
   paint()
   fitBounds(...FIT_BOUNDS.city)
 
+  function setView3D(azimuthDeg: number, newTilt: number): void {
+    azimuth = azimuthDeg
+    tiltDeg = newTilt
+    applyRootTransform()
+    paint() // pins are screen-space, so they need re-placing through `ground`
+  }
+
   return {
     setSelected,
     setVisibleCategories,
@@ -645,6 +721,8 @@ export function createBerlinMap(
     setDay,
     setRoute,
     setCluster,
+    setView3D,
+    projectPoint: (lng, lat) => projection([lng, lat]) ?? null,
     zoomBy,
     fit,
     fitPlaces,

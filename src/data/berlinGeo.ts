@@ -8,7 +8,8 @@
  * Point `VITE_BERLIN_GEO_BASE` at a dedicated bucket/CDN to move them later
  * with no code change.
  */
-import type { FeatureCollection, Geometry } from 'geojson'
+import type { FeatureCollection, Geometry, MultiPolygon, Polygon } from 'geojson'
+import type { BuildingProps } from '../map/buildings3d'
 
 export type DistrictProps = { name: string }
 export type LineProps = { c?: string; k?: string; n?: string; ref?: string; net?: string; color?: string }
@@ -42,6 +43,24 @@ async function load(): Promise<BerlinGeo> {
     get<BerlinGeo['wall']>('wall.json'),
   ])
   return { districts, water, roads, transit, wall }
+}
+
+/** LoD2 building massing — separate from the basemap so it only loads on demand. */
+export type BerlinBuildings = FeatureCollection<Polygon | MultiPolygon, BuildingProps>
+
+let buildingsCache: Promise<BerlinBuildings> | null = null
+
+/**
+ * Fetches the LoD2 footprints (~1.2 MB). Deliberately NOT part of
+ * {@link loadBerlinGeo}: the 3D layer is opt-in, so most sessions never pay
+ * for this.
+ */
+export function loadBerlinBuildings(): Promise<BerlinBuildings> {
+  buildingsCache ??= get<BerlinBuildings>('buildings.json').catch((err) => {
+    buildingsCache = null
+    throw err
+  })
+  return buildingsCache
 }
 
 let cache: Promise<BerlinGeo> | null = null
