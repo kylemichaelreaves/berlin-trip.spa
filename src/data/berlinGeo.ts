@@ -64,12 +64,19 @@ export const BERLIN_BUILDINGS_URL = `${GEO_BASE}/berlin.glb`
  *
  * The default view has no WebGL layer loaded at all, so a monument that only
  * exists as a mesh cannot appear there. These are pre-rendered by
- * `mesh2paper.py --svg` from the same scan, ~23 kB, and shown on hover — which
+ * `mesh2paper.py --svg` from the same scan, ~25 kB, and shown on hover — which
  * also sidesteps the scale problem entirely: a sprite is drawn at whatever
  * size reads, whatever the zoom.
+ *
+ * Nofretete is sprite-only, with no entry in {@link BERLIN_POINT_MODELS}. The
+ * bust is 48 cm: under a tenth of the Hegel-Denkmal, and under a pixel even at
+ * maximum zoom, so no amount of exaggeration makes a mesh of her worth
+ * loading. Her scan is the SMB's structured-light capture; the bust itself is
+ * public domain under §68 UrhG. See 90_credits.md in the geometry repo.
  */
 export const PLACE_SPRITES: Record<string, string> = {
   'hegel-denkmal': `${GEO_BASE}/hegel-denkmal.svg`,
+  nofretete: `${GEO_BASE}/nofretete.svg`,
 }
 
 export const BERLIN_POINT_MODELS = [
