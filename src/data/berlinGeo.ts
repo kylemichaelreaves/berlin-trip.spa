@@ -64,9 +64,14 @@ export const BERLIN_BUILDINGS_URL = `${GEO_BASE}/berlin.glb`
  *
  * The default view has no WebGL layer loaded at all, so a monument that only
  * exists as a mesh cannot appear there. These are pre-rendered by
- * `mesh2paper.py --svg` from the same scan, ~25 kB, and shown on hover — which
- * also sidesteps the scale problem entirely: a sprite is drawn at whatever
- * size reads, whatever the zoom.
+ * `mesh2paper.py --svg` from the same scan and shown on hover — which also
+ * sidesteps the scale problem entirely: a sprite is drawn at whatever size
+ * reads, whatever the zoom. 15–32 kB gzipped; they look big on disk because
+ * every face is its own <polygon>, and that compresses away.
+ *
+ * Nofretete is drawn in left profile at eye level rather than in the map's
+ * 45°/35° axonometric. Looking down at a portrait bust puts the camera on top
+ * of her crown, and the result reads as a leaning lump rather than as her.
  *
  * Nofretete is sprite-only, with no entry in {@link BERLIN_POINT_MODELS}. The
  * bust is 48 cm: under a tenth of the Hegel-Denkmal, and under a pixel even at
