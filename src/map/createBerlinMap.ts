@@ -26,7 +26,8 @@ export type BerlinMapCallbacks = {
   onLineEnter: (label: string, event: PointerEvent) => void
   onLineMove: (label: string, event: PointerEvent) => void
   onLineLeave: () => void
-  onPinEnter: (place: BerlinPlace, event: PointerEvent) => void
+  /** `x`/`y` are the pin's anchor in screen space, for placing art on it. */
+  onPinEnter: (place: BerlinPlace, event: PointerEvent, x: number, y: number) => void
   onPinLeave: () => void
   onPinClick: (place: BerlinPlace, screenX: number, screenY: number) => void
   /** Every zoom tick, so an overlay (the WebGL massing) can mirror the view. */
@@ -496,7 +497,7 @@ export function createBerlinMap(
     // interactions
     let down: { x: number; y: number } | null = null
     node
-      .on('pointerenter', (event: PointerEvent) => callbacks.onPinEnter(place, event))
+      .on('pointerenter', (event: PointerEvent) => callbacks.onPinEnter(place, event, x, y))
       .on('pointerleave', () => callbacks.onPinLeave())
       .on('pointerdown', (event: PointerEvent) => (down = { x: event.clientX, y: event.clientY }))
       .on('pointerup', (event: PointerEvent) => {

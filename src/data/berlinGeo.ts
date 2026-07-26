@@ -59,6 +59,19 @@ export const BERLIN_BUILDINGS_URL = `${GEO_BASE}/berlin.glb`
  * scan decimated from 2,000,416 triangles to 4,002 by `mesh2paper.py`.
  * Credit: VIMUNE, CC-BY-4.0 — see 90_credits.md in the geometry repo.
  */
+/**
+ * Flat axonometric sprites, keyed by place id.
+ *
+ * The default view has no WebGL layer loaded at all, so a monument that only
+ * exists as a mesh cannot appear there. These are pre-rendered by
+ * `mesh2paper.py --svg` from the same scan, ~23 kB, and shown on hover — which
+ * also sidesteps the scale problem entirely: a sprite is drawn at whatever
+ * size reads, whatever the zoom.
+ */
+export const PLACE_SPRITES: Record<string, string> = {
+  'hegel-denkmal': `${GEO_BASE}/hegel-denkmal.svg`,
+}
+
 export const BERLIN_POINT_MODELS = [
   {
     id: 'hegel-denkmal',

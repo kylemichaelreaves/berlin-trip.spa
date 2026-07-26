@@ -10,7 +10,7 @@ import {
 } from 'solid-js'
 import { useElementSize } from '../composables/useElementSize'
 import { byId, type BerlinCategoryKey } from '../data/berlinPlaces'
-import { loadBerlinGeo, BERLIN_BUILDINGS_URL, BERLIN_POINT_MODELS } from '../data/berlinGeo'
+import { loadBerlinGeo, BERLIN_BUILDINGS_URL, BERLIN_POINT_MODELS, PLACE_SPRITES } from '../data/berlinGeo'
 import type { Buildings3DHandle } from './buildings3d'
 import { PinPopover } from './PinPopover'
 import { MassingControl } from '../ui/MassingControl'
@@ -22,6 +22,8 @@ import {
 } from './createBerlinMap'
 
 type Tip = { x: number; y: number; label: string } | null
+/** A monument drawing standing on its pin. `x`/`y` are the pin's anchor. */
+type Sprite = { url: string; x: number; y: number } | null
 type Pop = { id: string; x: number; y: number } | null
 
 export type BerlinTripMapProps = {
@@ -42,6 +44,7 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
   let canvasEl: HTMLCanvasElement | undefined
   const [dims, attachWrapper] = useElementSize()
   const [tip, setTip] = createSignal<Tip>(null)
+  const [sprite, setSprite] = createSignal<Sprite>(null)
   const [pop, setPop] = createSignal<Pop>(null)
   let handle: BerlinMapHandle | null = null
   let massing: Buildings3DHandle | null = null
@@ -99,10 +102,20 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
         },
         onLineMove: (label, e) => setTip({ x: e.offsetX, y: e.offsetY, label }),
         onLineLeave: () => setTip(null),
-        onPinEnter: (place, e) => setTip({ x: e.offsetX, y: e.offsetY, label: place.name }),
-        onPinLeave: () => setTip(null),
+        onPinEnter: (place, e, px, py) => {
+          setTip({ x: e.offsetX, y: e.offsetY, label: place.name })
+          // Only in the flat view. With the massing layer up the monument is
+          // already there in 3D, and drawing both stacks two of it.
+          const art = PLACE_SPRITES[place.id]
+          setSprite(art && !show3D() ? { url: art, x: px, y: py } : null)
+        },
+        onPinLeave: () => {
+          setTip(null)
+          setSprite(null)
+        },
         onPinClick: (place, x, y) => {
           setTip(null)
+          setSprite(null)
           setPop({ id: place.id, x, y })
           props.onSelect(place.id)
         },
@@ -321,6 +334,27 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
           onTilt={setTiltDeg}
         />
       </div>
+
+      {/* Monument art, standing on its pin. Works in the flat default view,
+          where the WebGL layer is not even loaded, and at any zoom — the
+          Hegel-Denkmal is 3.3 m, which is under a pixel at true scale. */}
+      <Show when={sprite()}>
+        {(s) => (
+          <img
+            src={s().url}
+            alt=""
+            class="pointer-events-none absolute z-0"
+            style={{
+              left: `${s().x}px`,
+              top: `${s().y}px`,
+              width: '96px',
+              // Anchor the base on the pin's point, not the image's corner.
+              transform: 'translate(-50%, -100%)',
+              filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.45))',
+            }}
+          />
+        )}
+      </Show>
 
       <Show when={tip()}>
         {(t) => (
