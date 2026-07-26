@@ -10,7 +10,7 @@ import {
 } from 'solid-js'
 import { useElementSize } from '../composables/useElementSize'
 import { byId, type BerlinCategoryKey } from '../data/berlinPlaces'
-import { loadBerlinGeo, BERLIN_BUILDINGS_URL } from '../data/berlinGeo'
+import { loadBerlinGeo, BERLIN_BUILDINGS_URL, BERLIN_POINT_MODELS } from '../data/berlinGeo'
 import type { Buildings3DHandle } from './buildings3d'
 import { PinPopover } from './PinPopover'
 import { MassingControl } from '../ui/MassingControl'
@@ -195,6 +195,7 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
             wall: token('--wf-muted', '#a39d90'),
             monument: token('--wf-accent', '#c4623e'),
           },
+          BERLIN_POINT_MODELS,
         )
       })
       .then((built) => {

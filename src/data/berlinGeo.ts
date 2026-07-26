@@ -51,6 +51,29 @@ async function load(): Promise<BerlinGeo> {
  */
 export const BERLIN_BUILDINGS_URL = `${GEO_BASE}/berlin.glb`
 
+/**
+ * Monuments with no building record anywhere, added as individual meshes.
+ *
+ * The Hegel-Denkmal is a 3.3 m bust on a herm pedestal — no cadastre entry, so
+ * LoD2 has nothing, and OSM maps it only as a point. This is a photogrammetry
+ * scan decimated from 2,000,416 triangles to 4,002 by `mesh2paper.py`.
+ * Credit: VIMUNE, CC-BY-4.0 — see 90_credits.md in the geometry repo.
+ */
+export const BERLIN_POINT_MODELS = [
+  {
+    id: 'hegel-denkmal',
+    url: `${GEO_BASE}/hegel-denkmal.glb`,
+    lng: 13.3936026,
+    lat: 52.5193186,
+    // Drawn 8x oversize, so about 26 m apparent against its real 3.3 m. At
+    // true scale it is 0.8 px at the zoom where you can see a neighbourhood
+    // and 4 px at the maximum — the projection is fitted to the whole city,
+    // and a bust is not a building. Oversized it reads like the landmark it
+    // is, at the right coordinate. Buildings stay metrically honest.
+    scale: 8,
+  },
+] as const
+
 let cache: Promise<BerlinGeo> | null = null
 
 /** Fetches the basemap geometry once per session (retries if a prior load failed). */

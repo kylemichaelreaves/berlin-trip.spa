@@ -605,7 +605,9 @@ export function createBerlinMap(
   // ── Zoom ──────────────────────────────────────────────────
   const zoom = d3
     .zoom<SVGSVGElement, unknown>()
-    .scaleExtent([0.6, 48])
+    // Was 48, which is fine for pins and streets but too coarse now the map
+    // carries real building surfaces. 240 lets you get down to a block.
+    .scaleExtent([0.6, 240])
     .on('zoom', (event) => {
       transform = event.transform
       applyRootTransform()

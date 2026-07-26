@@ -57,6 +57,28 @@ export type Buildings3DHandle = {
 type Project = (lng: number, lat: number) => [number, number] | null
 
 /**
+ * A standalone mesh placed at one coordinate — a monument rather than a
+ * building. Produced by `mesh2paper.py`: metres, Z up, centred on the origin,
+ * base sitting on z = 0, so placement is the same projection maths the
+ * buildings use.
+ */
+export type PointModel = {
+  url: string
+  lng: number
+  lat: number
+  /** Clockwise from north, if the scan's facing matters. */
+  headingDeg?: number
+  /**
+   * Size multiplier. Buildings are drawn true to scale, but a monument is not
+   * a building: the Hegel-Denkmal is 3.3 m against a projection fitted to the
+   * whole city, so at true scale it is under a pixel at normal zoom and about
+   * four at the maximum. Drawn oversized it works the way a map symbol does —
+   * legible, obviously not to scale, in the right place.
+   */
+  scale?: number
+}
+
+/**
  * Vertical exaggeration. LoD2 heights are truthful, but at city zoom a 20 m
  * building over a ~700 px viewport barely registers, so the massing reads
  * better nudged up. 1.0 is metrically honest.
@@ -70,6 +92,7 @@ export async function createBuildings3D(
   width: number,
   height: number,
   palette: Buildings3DPalette,
+  points: readonly PointModel[] = [],
 ): Promise<Buildings3DHandle> {
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder)
   const gltf = await loader.loadAsync(url)
@@ -119,10 +142,45 @@ export async function createBuildings3D(
     if (mat.name) byName.set(mat.name, mat)
   })
 
+  // ── Point models ────────────────────────────────────────────
+  // Monuments too small to appear in any building dataset. Each is placed at
+  // its own coordinate rather than sharing the city mesh's origin, and gets
+  // its own anchor because the metres-to-pixels scale is the same but the
+  // translation is not.
+  const pointMats: THREE.MeshBasicMaterial[] = []
+  const pointRoots: THREE.Object3D[] = []
+  await Promise.all(
+    points.map(async (pm) => {
+      try {
+        const g = await loader.loadAsync(pm.url)
+        const at = project(pm.lng, pm.lat)
+        if (!at) return
+        const a = new THREE.Group()
+        const s = pm.scale ?? 1
+        a.position.set(at[0], at[1], 0)
+        a.scale.set(pxPerMetre * s, -pxPerMetre * s, pxPerMetre * HEIGHT_SCALE * s)
+        if (pm.headingDeg) a.rotation.z = (-pm.headingDeg * Math.PI) / 180
+        g.scene.traverse((n) => {
+          const mesh = n as THREE.Mesh
+          if (!mesh.isMesh) return
+          const mat = mesh.material as THREE.MeshBasicMaterial
+          mat.side = THREE.DoubleSide
+          pointMats.push(mat)
+        })
+        a.add(g.scene)
+        panZoom.add(a)
+        pointRoots.push(g.scene)
+      } catch (err) {
+        console.error('[massing] point model failed', pm.url, err)
+      }
+    }),
+  )
+
   function applyPalette(p: Buildings3DPalette): void {
     byName.get('roof')?.color.set(p.roof)
     byName.get('wall')?.color.set(p.wall)
     byName.get('monument')?.color.set(p.monument)
+    for (const m of pointMats) m.color.set(p.monument)
   }
   applyPalette(palette)
 
@@ -181,6 +239,7 @@ export async function createBuildings3D(
     },
     setVisible(on) {
       gltf.scene.visible = on
+      for (const r of pointRoots) r.visible = on
       schedule()
     },
     setPalette(p) {
@@ -189,15 +248,17 @@ export async function createBuildings3D(
     },
     destroy() {
       if (raf) cancelAnimationFrame(raf)
-      gltf.scene.traverse((n) => {
-        const mesh = n as THREE.Mesh
-        if (mesh.isMesh) {
-          mesh.geometry.dispose()
-          const mat = mesh.material
-          if (Array.isArray(mat)) mat.forEach((mm) => mm.dispose())
-          else mat.dispose()
-        }
-      })
+      const roots = [gltf.scene, ...pointRoots]
+      for (const root of roots)
+        root.traverse((n) => {
+          const mesh = n as THREE.Mesh
+          if (mesh.isMesh) {
+            mesh.geometry.dispose()
+            const mat = mesh.material
+            if (Array.isArray(mat)) mat.forEach((mm) => mm.dispose())
+            else mat.dispose()
+          }
+        })
       renderer.dispose()
     },
   }
