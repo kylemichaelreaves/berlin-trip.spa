@@ -237,6 +237,48 @@ export const BERLIN_PLACES: readonly BerlinPlace[] = [
     lat: 52.5168,
     lng: 13.3941,
   },
+  // Four domed landmarks, each placed on the area-weighted centroid of its own
+  // OSM building way rather than on a geocoder's idea of the address. The
+  // `gendarmenmarkt` pin above is the square itself; the last three below are
+  // the buildings around it, so they separate at high zoom and cluster at low.
+  //
+  // OSM splits each Gendarmenmarkt church in two — the domed tower carries the
+  // "Dom" name, the hall behind it is the Friedrichstadtkirche or the Neue
+  // Kirche. The tower is what you look at, and what these coordinates are.
+  {
+    // OSM way 313670734, building=cathedral, wikidata Q154563.
+    id: 'berliner-dom',
+    name: 'Berliner Dom',
+    category: 'philosophy',
+    lat: 52.5191,
+    lng: 13.4011,
+  },
+  {
+    // OSM way 28248283, wikidata Q315694. Gontard's domed tower of 1785, added
+    // to the Huguenot church of 1701-05 — the north end of the square.
+    id: 'franzoesischer-dom',
+    name: 'Französischer Dom (Gendarmenmarkt)',
+    category: 'philosophy',
+    lat: 52.5144,
+    lng: 13.3924,
+  },
+  {
+    // OSM way 43347270, wikidata Q315644. The south end, and its twin.
+    id: 'deutscher-dom',
+    name: 'Deutscher Dom (Gendarmenmarkt)',
+    category: 'philosophy',
+    lat: 52.5128,
+    lng: 13.3927,
+  },
+  {
+    // OSM way 217512230, wikidata Q702548. Schinkel, 1821, between the two
+    // domes on the west side of the square.
+    id: 'konzerthaus',
+    name: 'Konzerthaus Berlin (Schinkel’s Schauspielhaus)',
+    category: 'philosophy',
+    lat: 52.5136,
+    lng: 13.3918,
+  },
 ]
 
 export const byId: Record<string, BerlinPlace> = Object.fromEntries(BERLIN_PLACES.map((p) => [p.id, p]))
