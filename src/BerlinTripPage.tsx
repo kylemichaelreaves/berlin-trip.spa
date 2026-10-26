@@ -4,6 +4,8 @@ import { BERLIN_CATEGORIES, BERLIN_PLACES, type BerlinCategoryKey } from './data
 import { DAYS, DAY_BY_KEY, dayPlaceIds, type ItineraryDay } from './data/berlinItinerary'
 import { walkMinutesFromHotel } from './utils/walkFromHotel'
 import { stopRoute, type StopRoute } from './utils/stopRoute'
+import { tourView } from './utils/tourStep'
+import { PLACE_SPRITES } from './data/berlinGeo'
 import { TopBar } from './ui/TopBar'
 import { RouteInfo } from './ui/RouteInfo'
 import { Sidebar } from './ui/Sidebar'
@@ -12,6 +14,7 @@ import { MapLegend } from './ui/MapLegend'
 import { FitControl } from './ui/FitControl'
 import { ScaleBar } from './ui/ScaleBar'
 import { Attribution } from './ui/Attribution'
+import { TourCard } from './ui/TourCard'
 import BerlinTripMap from './map/BerlinTripMap'
 import type { BerlinFitPreset, BerlinMapHandle, BerlinMapLayers } from './map/createBerlinMap'
 
@@ -27,8 +30,21 @@ const ALL_LAYERS: BerlinMapLayers = {
   daytrip: true,
 }
 
+const THEME_KEY = 'berlin-trip-theme'
+
+/** Saved choice, else the system preference. Storage can throw (private mode). */
+function initialTheme(): 'light' | 'dark' {
+  try {
+    const saved = localStorage.getItem(THEME_KEY)
+    if (saved === 'light' || saved === 'dark') return saved
+  } catch {
+    // fall through to the system preference
+  }
+  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+}
+
 export default function BerlinTripPage(): JSX.Element {
-  const [theme, setTheme] = createSignal<'light' | 'dark'>('dark')
+  const [theme, setTheme] = createSignal<'light' | 'dark'>(initialTheme())
   const [tab, setTab] = createSignal<'layers' | 'itinerary'>('layers')
   const [query, setQuery] = createSignal('')
   const [walkable, setWalkable] = createSignal(false)
@@ -36,7 +52,10 @@ export default function BerlinTripPage(): JSX.Element {
   const [layers, setLayers] = createSignal<BerlinMapLayers>({ ...ALL_LAYERS })
   const [selectedId, setSelectedId] = createSignal<string | null>(null)
   const [activeDayKey, setActiveDayKey] = createSignal<string | null>(null)
+  // Tour mode: the map goes full-bleed with one stop at a time on a card.
+  // Autoplay is the old timed walk-through, now opt-in from the card.
   const [tour, setTour] = createSignal(false)
+  const [autoplay, setAutoplay] = createSignal(false)
   const [fitPreset, setFitPreset] = createSignal<BerlinFitPreset | null>('city')
   const [cluster, setCluster] = createSignal(true)
   // Stepper cursor within the active day: -1 = whole-day overview, 0..n = a stop.
@@ -152,11 +171,64 @@ export default function BerlinTripPage(): JSX.Element {
     mapHandle?.fit(preset)
   }
 
-  // Auto-advance tour — one point at a time, rolling across days.
+  function startTour(): void {
+    setTour(true)
+    // Open on a day: the active one, else the first. Its intro card shows
+    // until the visitor steps on.
+    if (!activeDayKey()) selectDay(DAYS[0].key)
+  }
+  function exitTour(): void {
+    setTour(false)
+    setAutoplay(false)
+  }
+  function toggleTour(): void {
+    if (tour()) exitTour()
+    else startTour()
+  }
+  // Re-frame the current stop: hiding the sidebar resizes the map, and the
+  // map rebuilds its scene (and handle) after a resize.
+  function refocus(): void {
+    const day = activeDay()
+    if (!day) return
+    const i = stopIndex()
+    if (i >= 0) focusStop(day, i)
+    else dayOverview(day)
+  }
+
   createEffect(() => {
-    if (!tour()) return
+    try {
+      localStorage.setItem(THEME_KEY, theme())
+    } catch {
+      // the toggle still works for this visit
+    }
+  })
+
+  // Autoplay — one point at a time, rolling across days.
+  createEffect(() => {
+    if (!tour() || !autoplay()) return
     const id = setInterval(() => step(1), 2800)
     onCleanup(() => clearInterval(id))
+  })
+
+  // ← / → step and Esc leaves while touring (not while typing in a field).
+  createEffect(() => {
+    if (!tour()) return
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      if (e.key === 'ArrowRight') step(1)
+      else if (e.key === 'ArrowLeft') step(-1)
+      else if (e.key === 'Escape') exitTour()
+      else return
+      e.preventDefault()
+    }
+    window.addEventListener('keydown', onKey)
+    onCleanup(() => window.removeEventListener('keydown', onKey))
+  })
+
+  const tourCardView = createMemo(() => {
+    const day = activeDay()
+    return tour() && day ? tourView(day, stopIndex(), PLACE_SPRITES) : null
   })
 
   return (
@@ -166,29 +238,33 @@ export default function BerlinTripPage(): JSX.Element {
       data-testid="berlin-trip-page"
       style={{ height: '100dvh', overflow: 'hidden' }}
     >
-      <TopBar
-        tour={tour()}
-        theme={theme()}
-        onToggleTour={() => setTour((v) => !v)}
-        onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
-      />
+      <Show when={!tour()}>
+        <TopBar
+          tour={tour()}
+          theme={theme()}
+          onToggleTour={toggleTour}
+          onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+        />
+      </Show>
 
       <div class="flex min-h-0 flex-1">
-        <Sidebar
-          tab={tab()}
-          setTab={setTab}
-          query={query()}
-          setQuery={setQuery}
-          walkable={walkable()}
-          setWalkable={setWalkable}
-          catOn={catOn()}
-          toggleCat={toggleCat}
-          layers={layers()}
-          toggleLayer={toggleLayer}
-          activeDay={activeDay()}
-          activeStopIndex={stopIndex()}
-          onPickStop={selectStop}
-        />
+        <Show when={!tour()}>
+          <Sidebar
+            tab={tab()}
+            setTab={setTab}
+            query={query()}
+            setQuery={setQuery}
+            walkable={walkable()}
+            setWalkable={setWalkable}
+            catOn={catOn()}
+            toggleCat={toggleCat}
+            layers={layers()}
+            toggleLayer={toggleLayer}
+            activeDay={activeDay()}
+            activeStopIndex={stopIndex()}
+            onPickStop={selectStop}
+          />
+        </Show>
 
         <div class="flex min-w-0 flex-1 flex-col">
           <div class="relative min-h-0 flex-1">
@@ -201,9 +277,105 @@ export default function BerlinTripPage(): JSX.Element {
               cluster={cluster}
               selectedId={selectedId}
               onSelect={setSelectedId}
-              registerHandle={(h) => (mapHandle = h)}
+              registerHandle={(h) => {
+                const first = mapHandle === null
+                mapHandle = h
+                if (!first && tour()) refocus()
+              }}
             />
-            <div class="pointer-events-none absolute inset-0">
+            <Show when={tourCardView()} keyed>
+              {(view) => (
+                <div class="pointer-events-none absolute inset-0 z-20" data-testid="tour-overlay">
+                  <div class="pointer-events-auto absolute left-3 top-[52px] flex items-center gap-2 md:left-6 md:top-[60px]">
+                    <button
+                      type="button"
+                      onClick={exitTour}
+                      class="flex h-11 items-center gap-2 rounded-[10px] pl-3 pr-4 text-sm"
+                      style={{
+                        background: 'var(--wf-glass)',
+                        border: '1.5px solid var(--wf-line)',
+                        color: 'var(--wf-ink)',
+                      }}
+                      data-testid="tour-exit"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                      >
+                        <path d="M6 6l12 12M18 6L6 18" />
+                      </svg>
+                      Exit tour
+                    </button>
+                    <span
+                      class="wf-mono hidden rounded-lg px-3 py-2 text-xs uppercase tracking-[0.08em] sm:inline"
+                      style={{ background: 'var(--wf-glass)', color: 'var(--wf-ink-2)' }}
+                    >
+                      {view.day.short} {view.day.date} · {view.day.title}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+                      aria-label={theme() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+                      class="flex size-11 items-center justify-center rounded-[10px] text-base"
+                      style={{
+                        background: 'var(--wf-glass)',
+                        border: '1.5px solid var(--wf-line)',
+                        color: 'var(--wf-ink)',
+                      }}
+                      data-testid="tour-theme"
+                    >
+                      <Show
+                        when={theme() === 'dark'}
+                        fallback={
+                          <svg
+                            aria-hidden="true"
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.8"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" />
+                          </svg>
+                        }
+                      >
+                        <svg
+                          aria-hidden="true"
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.8"
+                          stroke-linecap="round"
+                        >
+                          <circle cx="12" cy="12" r="4" />
+                          <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+                        </svg>
+                      </Show>
+                    </button>
+                  </div>
+                  <TourCard
+                    view={view}
+                    route={activeRoute()}
+                    autoplay={autoplay()}
+                    onToggleAutoplay={() => setAutoplay((v) => !v)}
+                    onNext={() => step(1)}
+                    onBack={() => step(-1)}
+                  />
+                </div>
+              )}
+            </Show>
+            <div class="pointer-events-none absolute inset-0" classList={{ hidden: tour() }}>
               <Show when={activeRoute()} keyed>
                 {(r) => (
                   <div class="absolute left-1/2 top-3.5 -translate-x-1/2">
@@ -237,13 +409,15 @@ export default function BerlinTripPage(): JSX.Element {
             </div>
           </div>
 
-          <DayStepper
-            activeKey={activeDayKey()}
-            tour={tour()}
-            onPick={selectDay}
-            onStep={step}
-            onToggleTour={() => setTour((v) => !v)}
-          />
+          <Show when={!tour()}>
+            <DayStepper
+              activeKey={activeDayKey()}
+              tour={tour()}
+              onPick={selectDay}
+              onStep={step}
+              onToggleTour={toggleTour}
+            />
+          </Show>
         </div>
       </div>
     </div>

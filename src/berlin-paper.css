@@ -9,6 +9,10 @@
   --wf-glass: rgba(255, 253, 248, 0.95);
   --wf-water: #b9c7cf;
   --wf-accent: #c4623e;
+  /* Secondary text and accent-as-text: both pass 4.5:1 on paper-2, which
+     --wf-muted and --wf-accent do not. Used by the tour card. */
+  --wf-ink-2: #4a463e;
+  --wf-accent-ink: #a24c2c;
 
   color: var(--wf-ink);
   background: var(--wf-paper);
@@ -28,11 +32,18 @@
   --wf-line: #322e26;
   --wf-glass: rgba(33, 30, 23, 0.95);
   --wf-water: #3b4a55;
+  --wf-accent: #e07b55;
+  --wf-ink-2: #c9c3b6;
+  --wf-accent-ink: #f0a283;
 }
 
 /* Annotation callouts: regular sans-serif (no script font). */
 .berlin-paper .wf-hand {
   font-family: inherit;
+}
+.berlin-paper .wf-serif {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-weight: 400;
 }
 .berlin-paper .wf-mono {
   font-family: ui-monospace, monospace;
