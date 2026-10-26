@@ -15,17 +15,21 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+# Every action is pinned to a full commit SHA (tag in the trailing comment), and
+# installs skip dependency lifecycle scripts: a moved tag or a compromised
+# package cannot run code in CI. Neither project needs install scripts — native
+# binaries arrive as platform packages, and Playwright's browsers are in the image.
 jobs:
   lint:
     name: Lint & Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --ignore-scripts
       - run: bun run format:check
       - run: bun run lint
 
@@ -33,12 +37,12 @@ jobs:
     name: Typecheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --ignore-scripts
       # Builds every project in tsconfig.json's `references`: app, node configs
       # and unit tests. Vitest does not typecheck, so without this job a type
       # error in a test (or a script) reaches main unnoticed.
@@ -49,12 +53,12 @@ jobs:
     needs: [lint, typecheck]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --ignore-scripts
       - run: bun run test
 
   # SonarCloud analysis. Runs from CI rather than as SonarCloud's "Automatic Analysis" so
@@ -90,7 +94,7 @@ jobs:
         with:
           node-version-file: .nvmrc
       - if: ${{ env.SONAR_TOKEN != '' }}
-        run: bun install --frozen-lockfile
+        run: bun install --frozen-lockfile --ignore-scripts
       - if: ${{ env.SONAR_TOKEN != '' }}
         run: bun run test:coverage
       - name: SonarQube Scan
