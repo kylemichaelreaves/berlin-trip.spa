@@ -2,22 +2,12 @@ import { type JSX, Show, createMemo } from 'solid-js'
 import { byId } from '../data/berlinPlaces'
 import type { BerlinRoute } from '../data/berlinRouteTypes'
 import type { DaySegment } from '../utils/daySegments'
+import { formatRouteSummary } from '../utils/tourStep'
 import { sB } from './styles'
-
-function formatDistance(meters: number): string {
-  return meters < 950 ? `${meters} m` : `${(meters / 1000).toFixed(1)} km`
-}
 
 /** Directions card for the active itinerary leg (shown while stepping). */
 export function RouteInfo(props: { seg: DaySegment; route: BerlinRoute | null }): JSX.Element {
-  const summary = createMemo<string | null>(() => {
-    const r = props.route
-    if (!r) return null
-    const lines = r.legs.filter((l) => l.mode === 'transit' && l.name).map((l) => l.name)
-    const head = lines.length ? lines.join(' → ') : 'walk'
-    const dist = r.distanceM != null ? ` · ${formatDistance(r.distanceM)}` : ''
-    return `${head} · ~${r.durationMin} min${dist}`
-  })
+  const summary = createMemo<string | null>(() => (props.route ? formatRouteSummary(props.route) : null))
   return (
     <div
       class="max-w-md rounded-md px-3 py-1.5 text-center shadow-md"
