@@ -4,6 +4,9 @@ coverage
 *.local
 .DS_Store
 
+# Local env / direnv (machine-specific paths, e.g. GH_CONFIG_DIR)
+.envrc
+
 # Editors
 .idea
 .vscode/*
