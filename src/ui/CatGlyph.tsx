@@ -23,13 +23,20 @@ export function CatGlyph(props: { cat: BerlinCategoryKey; size?: number; colorOn
           'stroke-width': 1.4,
           'stroke-linejoin': 'round' as const,
         }
-        return n.tag === 'circle' ? (
-          <circle {...n.attrs} {...common} />
-        ) : n.tag === 'rect' ? (
-          <rect {...n.attrs} {...common} />
-        ) : (
-          <polygon points={n.attrs.points} {...common} />
-        )
+        // A plain switch on the discriminant, not <Switch>: TS narrows `n.attrs`
+        // here, but it can't narrow across a <Match when={…}> prop boundary.
+        let el: JSX.Element
+        switch (n.tag) {
+          case 'circle':
+            el = <circle {...n.attrs} {...common} />
+            break
+          case 'rect':
+            el = <rect {...n.attrs} {...common} />
+            break
+          default:
+            el = <polygon {...n.attrs} {...common} />
+        }
+        return el
       })()}
     </svg>
   )
