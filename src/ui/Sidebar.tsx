@@ -24,10 +24,10 @@ export function Sidebar(props: {
 }): JSX.Element {
   return (
     <div
-      class="flex w-80 flex-shrink-0 flex-col overflow-hidden"
+      class="flex w-80 shrink-0 flex-col overflow-hidden"
       style={{ 'border-right': sB, background: 'var(--wf-paper)' }}
     >
-      <div class="flex flex-shrink-0" style={{ 'border-bottom': sB }}>
+      <div class="flex shrink-0" style={{ 'border-bottom': sB }}>
         <For
           each={
             [

@@ -2,6 +2,11 @@ import { type JSX } from 'solid-js'
 
 /** Pill switch (visual only — controlled). */
 export function Toggle(props: { on?: boolean; accentOn?: boolean; onClick?: () => void }): JSX.Element {
+  const track = () => {
+    if (!props.on) return 'var(--wf-paper-2)'
+    return props.accentOn ? 'var(--wf-accent)' : 'var(--wf-ink)'
+  }
+
   return (
     <button
       type="button"
@@ -12,7 +17,7 @@ export function Toggle(props: { on?: boolean; accentOn?: boolean; onClick?: () =
         height: '17px',
         'border-radius': '999px',
         border: '1.5px solid var(--wf-ink)',
-        background: props.on ? (props.accentOn ? 'var(--wf-accent)' : 'var(--wf-ink)') : 'var(--wf-paper-2)',
+        background: track(),
         position: 'relative',
         'flex-shrink': 0,
         padding: 0,

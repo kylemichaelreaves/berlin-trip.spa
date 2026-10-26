@@ -23,9 +23,9 @@ export function DayStepper(props: {
   onToggleTour: () => void
 }): JSX.Element {
   return (
-    <div class="flex-shrink-0 px-4 pb-3 pt-2.5" style={{ 'border-top': sB, background: 'var(--wf-paper-2)' }}>
+    <div class="shrink-0 px-4 pb-3 pt-2.5" style={{ 'border-top': sB, background: 'var(--wf-paper-2)' }}>
       <div class="flex items-center gap-3">
-        <div class="flex flex-shrink-0 items-center gap-1.5">
+        <div class="flex shrink-0 items-center gap-1.5">
           <StepBtn onClick={() => props.onStep(-1)}>◀</StepBtn>
           <button
             type="button"
@@ -44,7 +44,7 @@ export function DayStepper(props: {
           </button>
           <StepBtn onClick={() => props.onStep(1)}>▶</StepBtn>
         </div>
-        <div style={{ width: '1px', height: '26px', background: 'var(--wf-line)' }} class="flex-shrink-0" />
+        <div style={{ width: '1px', height: '26px', background: 'var(--wf-line)' }} class="shrink-0" />
         <div class="relative flex flex-1 items-stretch">
           <div
             class="absolute"

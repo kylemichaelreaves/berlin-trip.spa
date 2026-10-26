@@ -17,6 +17,11 @@ export function MassingControl(props: {
   onAzimuth: (deg: number) => void
   onTilt: (deg: number) => void
 }): JSX.Element {
+  const status = () => {
+    if (props.loading) return '···'
+    return props.on ? '●' : '○'
+  }
+
   return (
     <div
       class="flex flex-col overflow-hidden"
@@ -34,7 +39,7 @@ export function MassingControl(props: {
         title="Extruded LoD2 building massing"
       >
         <span>3D MASSING</span>
-        <span>{props.loading ? '···' : props.on ? '●' : '○'}</span>
+        <span>{status()}</span>
       </button>
 
       <Show when={props.on}>
