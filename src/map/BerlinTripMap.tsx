@@ -23,7 +23,7 @@ import {
 
 type Tip = { x: number; y: number; label: string } | null
 /** A monument drawing standing on its pin. `x`/`y` are the pin's anchor. */
-type Sprite = { url: string; x: number; y: number } | null
+type Sprite = { url: string; width: number; x: number; y: number } | null
 type Pop = { id: string; x: number; y: number } | null
 
 export type BerlinTripMapProps = {
@@ -107,7 +107,7 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
           // Only in the flat view. With the massing layer up the monument is
           // already there in 3D, and drawing both stacks two of it.
           const art = PLACE_SPRITES[place.id]
-          setSprite(art && !show3D() ? { url: art, x: px, y: py } : null)
+          setSprite(art && !show3D() ? { ...art, x: px, y: py } : null)
         },
         onPinLeave: () => {
           setTip(null)
@@ -347,7 +347,7 @@ export default function BerlinTripMap(props: BerlinTripMapProps): JSX.Element {
             style={{
               left: `${s().x}px`,
               top: `${s().y}px`,
-              width: '96px',
+              width: `${s().width}px`,
               // Anchor the base on the pin's point, not the image's corner.
               transform: 'translate(-50%, -100%)',
               filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.45))',
