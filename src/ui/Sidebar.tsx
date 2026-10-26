@@ -21,11 +21,16 @@ export function Sidebar(props: {
   activeDay: ItineraryDay | null
   activeStopIndex: number
   onPickStop: (index: number) => void
+  /** Set when the sidebar is shown as a phone drawer: adds a close button. */
+  onClose?: () => void
+  /** Width / extra classes; defaults to the desktop rail. */
+  class?: string
 }): JSX.Element {
   return (
     <div
-      class="flex w-80 shrink-0 flex-col overflow-hidden"
+      class={`flex shrink-0 flex-col overflow-hidden ${props.class ?? 'w-80'}`}
       style={{ 'border-right': sB, background: 'var(--wf-paper)' }}
+      data-testid="berlin-sidebar"
     >
       <div class="flex shrink-0" style={{ 'border-bottom': sB }}>
         <For
@@ -40,7 +45,7 @@ export function Sidebar(props: {
             <button
               type="button"
               onClick={() => props.setTab(k)}
-              class="flex-1 py-2.5 text-center text-xs font-bold"
+              class="min-h-11 flex-1 py-2.5 text-center text-xs font-bold"
               style={{
                 color: props.tab === k ? 'var(--wf-ink)' : 'var(--wf-muted)',
                 'border-bottom': props.tab === k ? '2.5px solid var(--wf-accent)' : '2.5px solid transparent',
@@ -51,6 +56,31 @@ export function Sidebar(props: {
             </button>
           )}
         </For>
+        <Show when={props.onClose}>
+          {(close) => (
+            <button
+              type="button"
+              onClick={() => close()()}
+              aria-label="Close panel"
+              class="flex w-11 shrink-0 items-center justify-center"
+              style={{ 'border-left': sB, color: 'var(--wf-ink)' }}
+              data-testid="berlin-sidebar-close"
+            >
+              <svg
+                aria-hidden="true"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+              >
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          )}
+        </Show>
       </div>
 
       <div class="flex-1 overflow-y-auto">

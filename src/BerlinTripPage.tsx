@@ -5,6 +5,7 @@ import { DAYS, DAY_BY_KEY, dayPlaceIds, type ItineraryDay } from './data/berlinI
 import { walkMinutesFromHotel } from './utils/walkFromHotel'
 import { stopRoute, type StopRoute } from './utils/stopRoute'
 import { tourView } from './utils/tourStep'
+import { useMediaQuery } from './composables/useMediaQuery'
 import { PLACE_SPRITES } from './data/berlinGeo'
 import { TopBar } from './ui/TopBar'
 import { RouteInfo } from './ui/RouteInfo'
@@ -56,6 +57,9 @@ export default function BerlinTripPage(): JSX.Element {
   // Autoplay is the old timed walk-through, now opt-in from the card.
   const [tour, setTour] = createSignal(false)
   const [autoplay, setAutoplay] = createSignal(false)
+  // Phones: the sidebar is a drawer over the map instead of a fixed rail.
+  const narrow = useMediaQuery('(max-width: 767px)')
+  const [drawerOpen, setDrawerOpen] = createSignal(false)
   const [fitPreset, setFitPreset] = createSignal<BerlinFitPreset | null>('city')
   const [cluster, setCluster] = createSignal(true)
   // Stepper cursor within the active day: -1 = whole-day overview, 0..n = a stop.
@@ -133,6 +137,8 @@ export default function BerlinTripPage(): JSX.Element {
   function selectStop(i: number): void {
     const day = activeDay()
     if (!day) return
+    // On a phone the drawer covers the map; get out of the way of the stop.
+    if (narrow()) setDrawerOpen(false)
     setStopIndex(i)
     focusStop(day, i)
   }
@@ -226,6 +232,36 @@ export default function BerlinTripPage(): JSX.Element {
     onCleanup(() => window.removeEventListener('keydown', onKey))
   })
 
+  // Esc closes the phone drawer.
+  createEffect(() => {
+    if (!drawerOpen()) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDrawerOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    onCleanup(() => window.removeEventListener('keydown', onKey))
+  })
+
+  const sidebar = (drawer: boolean) => (
+    <Sidebar
+      tab={tab()}
+      setTab={setTab}
+      query={query()}
+      setQuery={setQuery}
+      walkable={walkable()}
+      setWalkable={setWalkable}
+      catOn={catOn()}
+      toggleCat={toggleCat}
+      layers={layers()}
+      toggleLayer={toggleLayer}
+      activeDay={activeDay()}
+      activeStopIndex={stopIndex()}
+      onPickStop={selectStop}
+      onClose={drawer ? () => setDrawerOpen(false) : undefined}
+      class={drawer ? 'w-[min(20rem,88vw)] shadow-xl' : undefined}
+    />
+  )
+
   const tourCardView = createMemo(() => {
     const day = activeDay()
     return tour() && day ? tourView(day, stopIndex(), PLACE_SPRITES) : null
@@ -244,26 +280,23 @@ export default function BerlinTripPage(): JSX.Element {
           theme={theme()}
           onToggleTour={toggleTour}
           onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+          onOpenPanel={narrow() ? () => setDrawerOpen(true) : undefined}
         />
       </Show>
 
-      <div class="flex min-h-0 flex-1">
-        <Show when={!tour()}>
-          <Sidebar
-            tab={tab()}
-            setTab={setTab}
-            query={query()}
-            setQuery={setQuery}
-            walkable={walkable()}
-            setWalkable={setWalkable}
-            catOn={catOn()}
-            toggleCat={toggleCat}
-            layers={layers()}
-            toggleLayer={toggleLayer}
-            activeDay={activeDay()}
-            activeStopIndex={stopIndex()}
-            onPickStop={selectStop}
-          />
+      <div class="relative flex min-h-0 flex-1">
+        <Show when={!tour() && !narrow()}>{sidebar(false)}</Show>
+        <Show when={!tour() && narrow() && drawerOpen()}>
+          <div class="absolute inset-0 z-30 flex" data-testid="berlin-sidebar-drawer">
+            {sidebar(true)}
+            <button
+              type="button"
+              aria-label="Close panel"
+              class="min-w-0 flex-1"
+              style={{ background: 'rgba(0, 0, 0, 0.35)' }}
+              onClick={() => setDrawerOpen(false)}
+            />
+          </div>
         </Show>
 
         <div class="flex min-w-0 flex-1 flex-col">
@@ -383,7 +416,8 @@ export default function BerlinTripPage(): JSX.Element {
                   </div>
                 )}
               </Show>
-              <div class="pointer-events-auto absolute bottom-3.5 left-3.5">
+              {/* Phones: the legend's toggles live in the drawer's layer list. */}
+              <div class="pointer-events-auto absolute bottom-3.5 left-3.5 hidden md:block">
                 <MapLegend catOn={catOn()} toggleCat={toggleCat} />
               </div>
               <div class="pointer-events-auto absolute right-3.5 top-3.5">
