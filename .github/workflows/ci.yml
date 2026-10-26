@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  # No `branches:` filter — that would restrict runs to PRs targeting main, so in
+  # a stack only the bottom PR gets checked and every one above it merges on
+  # faith. Any open PR should be gated, whatever it targets.
+  pull_request:
+
+# Supersede in-flight runs for the same ref so rapid pushes don't queue behind
+# results nobody will read. `main` is excluded — those runs gate the deployable
+# history and must each complete.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+      - run: bun install --frozen-lockfile
+      - run: bun run format:check
+      - run: bun run lint
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+      - run: bun install --frozen-lockfile
+      # Builds every project in tsconfig.json's `references`: app, node configs
+      # and unit tests. Vitest does not typecheck, so without this job a type
+      # error in a test (or a script) reaches main unnoticed.
+      - run: bun run typecheck
+
+  unit-tests:
+    name: Unit Tests
+    needs: [lint, typecheck]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+      - run: bun install --frozen-lockfile
+      - run: bun run test
+
+  # SonarCloud analysis. Runs from CI rather than as SonarCloud's "Automatic Analysis" so
+  # the vitest coverage report is included — Automatic Analysis inspects the repository
+  # directly and never sees CI output. The two modes are mutually exclusive: Automatic
+  # Analysis must be OFF in the SonarCloud project settings.
+  #
+  # Runs the suite with coverage itself, because the lcov report has to exist on the same
+  # filesystem as the scanner.
+  #
+  # Skips itself (green, with a notice) until the SONAR_TOKEN secret exists, so CI is
+  # usable before the SonarCloud project is set up. A job-level `if:` cannot read
+  # secrets, hence the per-step check on the job env.
+  sonarqube:
+    name: SonarQube
+    needs: [lint, typecheck]
+    runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - if: ${{ env.SONAR_TOKEN == '' }}
+        run: echo "::notice title=SonarQube skipped::Add a SONAR_TOKEN repository secret to enable analysis."
+      - if: ${{ env.SONAR_TOKEN != '' }}
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          # Sonar attributes issues and decides what is new code from history; a shallow
+          # clone makes every line look new.
+          fetch-depth: 0
+      - if: ${{ env.SONAR_TOKEN != '' }}
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - if: ${{ env.SONAR_TOKEN != '' }}
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version-file: .nvmrc
+      - if: ${{ env.SONAR_TOKEN != '' }}
+        run: bun install --frozen-lockfile
+      - if: ${{ env.SONAR_TOKEN != '' }}
+        run: bun run test:coverage
+      - name: SonarQube Scan
+        if: ${{ env.SONAR_TOKEN != '' }}
+        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6
+        env:
+          SONAR_HOST_URL: https://sonarcloud.io
