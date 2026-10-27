@@ -21,9 +21,12 @@ export type BerlinGeo = {
   wall: FeatureCollection<Geometry, LineProps>
 }
 
+const env = import.meta.env as unknown as Record<string, string | undefined>
+
+// BASE_URL is Vite's `base` ("/" locally, "/berlin-trip/" in the demos build),
+// so the default follows the app wherever it is mounted.
 const GEO_BASE = (
-  (import.meta.env as unknown as Record<string, string | undefined>).VITE_BERLIN_GEO_BASE ??
-  `${window.location.origin}/berlin`
+  env.VITE_BERLIN_GEO_BASE ?? `${window.location.origin}${env.BASE_URL ?? '/'}berlin`
 ).replace(/\/$/, '')
 
 async function get<T>(file: string): Promise<T> {
